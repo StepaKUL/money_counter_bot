@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -11,6 +12,7 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     filters,
+    PicklePersistence,
 )
 
 # Enable logging
@@ -19,6 +21,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Timezone
+TZ = ZoneInfo("Asia/Yekaterinburg")
+
 # Stages
 START_ROUTES, GET_AMOUNT, GET_DESCRIPTION = range(3)
 # Callback data
@@ -26,7 +31,7 @@ ADD_INCOME, ADD_EXPENSE = 'add_income', 'add_expense'
 
 def get_user_stats(user_data):
     """Calculates and returns financial statistics for the user for today."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = datetime.now(TZ).strftime("%Y-%m-%d")
     
     # Initialize data for new user or new day
     if 'last_update' not in user_data or user_data.get('last_update') != today_str:
@@ -46,7 +51,7 @@ def get_user_stats(user_data):
     user_data['balance_end_day'] = balance_end # Save for tomorrow
 
     return {
-        "date": datetime.now().strftime("%d %B %Y"),
+        "date": datetime.now(TZ).strftime("%d %B %Y"),
         "balance_start": balance_start,
         "total_income": total_income,
         "total_expense": total_expense,
@@ -146,7 +151,7 @@ async def save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     description = update.message.text
     transaction = context.user_data['current_transaction']
     transaction['description'] = description
-    transaction['date'] = datetime.now().isoformat()
+    transaction['date'] = datetime.now(TZ).isoformat()
 
     if 'transactions_today' not in context.user_data:
         context.user_data['transactions_today'] = []
@@ -186,15 +191,20 @@ async def save_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 def main() -> None:
     """Run the bot."""
     # Create the Application and pass it your bot's token.
-    # IMPORTANT: Create a file named 'bot_token.txt' and place your token there.
-    try:
-        with open('bot_token.txt', 'r') as f:
-            token = f.read().strip()
-    except FileNotFoundError:
-        print("Файл 'bot_token.txt' не найден. Пожалуйста, создайте его и впишите токен.")
-        return
+    # Read token from environment variable or local file
+    token = os.getenv('BOT_TOKEN')
+    if not token:
+        try:
+            with open('bot_token.txt', 'r') as f:
+                token = f.read().strip()
+        except FileNotFoundError:
+            print("Ошибка: Не найден токен. Создайте переменную окружения BOT_TOKEN или файл bot_token.txt.")
+            return
 
-    application = Application.builder().token(token).build()
+    # Set up persistence
+    persistence = PicklePersistence(filepath="bot_data.pickle")
+
+    application = Application.builder().token(token).persistence(persistence).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],

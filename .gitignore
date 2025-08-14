@@ -117,3 +117,6 @@ dmypy.json
 
 # Sensitive files
 bot_token.txt
+
+# Persistence file
+bot_data.pickle
